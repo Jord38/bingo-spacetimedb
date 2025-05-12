@@ -26,6 +26,7 @@ export type SystemMessageItem = {
     id: string;
     text: string;
     timestamp: Date;
+    important: boolean;
 }
 
 export type ChatItem = PrettyMessage | SystemMessageItem;
@@ -94,8 +95,8 @@ function useSystemMessages(conn: DbConnection | null, connected: boolean, authen
         conn.db.systemMessage.onDelete(onDelete);
 
         const initialMessages: SystemMessage[] = [];
-        for (const msg of conn.db.message.iter()) {
-            initialMessages.push(msg as SystemMessage);
+        for (const msg of conn.db.systemMessage.iter()) {
+            initialMessages.push(msg);
         }
         setSystemMessages(initialMessages.sort((a, b) => Number(a.sent) - Number(b.sent)));
 
@@ -253,7 +254,8 @@ export function Chat() {
                     type: 'system_db',
                     id: `${message.sent.toString()}-${index}`,
                     text: message.text,
-                    timestamp: message.sent.toDate()
+                    timestamp: message.sent.toDate(),
+                    important: message.important
                 };
             });
     }, [systemMessages, allUsers, currentUserSteamId]);
@@ -417,7 +419,12 @@ export function Chat() {
                             } else if (item.type === 'system_db') {
                                 return (
                                     <div key={item.id} className="text-center my-1 py-1">
-                                        <p className="text-xs text-muted-foreground italic px-2 py-0.5 bg-background border border-border rounded-md inline-block">
+                                        <p
+                                            className={cn(
+                                                "text-xs italic px-2 py-0.5 border border-border rounded-md inline-block",
+                                                item.important ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground"
+                                            )}
+                                        >
                                             {item.text}
                                         </p>
                                     </div>

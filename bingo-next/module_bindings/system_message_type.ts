@@ -34,6 +34,7 @@ export type SystemMessage = {
   messageId: bigint,
   text: string,
   sent: Timestamp,
+  important: boolean,
 };
 
 /**
@@ -49,6 +50,7 @@ export namespace SystemMessage {
       new ProductTypeElement("messageId", AlgebraicType.createU64Type()),
       new ProductTypeElement("text", AlgebraicType.createStringType()),
       new ProductTypeElement("sent", AlgebraicType.createTimestampType()),
+      new ProductTypeElement("important", AlgebraicType.createBoolType()),
     ]);
   }
 

@@ -337,19 +337,19 @@ export class RemoteReducers {
     this.connection.offReducer("SendMessage", callback);
   }
 
-  sendSystemMessage(messageText: string) {
-    const __args = { messageText };
+  sendSystemMessage(messageText: string, important: boolean) {
+    const __args = { messageText, important };
     let __writer = new BinaryWriter(1024);
     SendSystemMessage.getTypeScriptAlgebraicType().serialize(__writer, __args);
     let __argsBuffer = __writer.getBuffer();
     this.connection.callReducer("SendSystemMessage", __argsBuffer, this.setCallReducerFlags.sendSystemMessageFlags);
   }
 
-  onSendSystemMessage(callback: (ctx: ReducerEventContext, messageText: string) => void) {
+  onSendSystemMessage(callback: (ctx: ReducerEventContext, messageText: string, important: boolean) => void) {
     this.connection.onReducer("SendSystemMessage", callback);
   }
 
-  removeOnSendSystemMessage(callback: (ctx: ReducerEventContext, messageText: string) => void) {
+  removeOnSendSystemMessage(callback: (ctx: ReducerEventContext, messageText: string, important: boolean) => void) {
     this.connection.offReducer("SendSystemMessage", callback);
   }
 

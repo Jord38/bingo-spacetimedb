@@ -40,6 +40,7 @@ public static partial class Module
         public ulong MessageId;
         public string Text = "";
         public Timestamp Sent;
+        public bool Important;
     }
 
     private static string ValidateName(string name)
@@ -206,7 +207,7 @@ public static partial class Module
     }
 
     [Reducer]
-    public static void SendSystemMessage(ReducerContext ctx, string messageText)
+    public static void SendSystemMessage(ReducerContext ctx, string messageText, bool important = false)
     {
         Log.Info($"AddSystemMessageInternal called with: '{messageText}'");
 
@@ -222,6 +223,7 @@ public static partial class Module
                 MessageId = 0,
                 Text = messageText,
                 Sent = ctx.Timestamp,
+                Important = important,
             }
         );
     }

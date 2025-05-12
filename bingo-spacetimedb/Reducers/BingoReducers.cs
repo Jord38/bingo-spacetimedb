@@ -138,7 +138,7 @@ public static partial class Module
         }
 
         List<uint> availableFieldIds;
-        // Use .Value to access AvailableFieldIds
+
         if (gameSessionNullable.Value.AvailableFieldIds != null && gameSessionNullable.Value.AvailableFieldIds.Count > 0)
         {
             availableFieldIds = gameSessionNullable.Value.AvailableFieldIds.ToList();
@@ -156,7 +156,7 @@ public static partial class Module
         }
 
         // Randomly select 25 fields
-        var random = new Random((int)ctx.Timestamp.MicrosecondsSinceUnixEpoch); // Seed with timestamp for some variability
+        var random = new Random((int)ctx.Timestamp.MicrosecondsSinceUnixEpoch);
         List<uint> assignedFieldIds = new List<uint>();
         
         // Fisher-Yates shuffle principle for selecting K items
@@ -204,7 +204,7 @@ public static partial class Module
             Log.Error($"Player {playerSteamId} does not have a bingo card (CardId: {cardId}) for game {gameId}. Cannot mark field.");
             return;
         }
-        var playerCard = playerCardNullable.Value; // Now non-nullable
+        var playerCard = playerCardNullable.Value;
 
         if (!playerCard.AssignedFieldIds.Contains(fieldIdToMark))
         {
@@ -218,7 +218,7 @@ public static partial class Module
             Log.Error($"Bingo field definition with ID {fieldIdToMark} not found. Cannot mark.");
             return;
         }
-        var fieldDefinition = fieldDefinitionNullable.Value; // Now non-nullable
+        var fieldDefinition = fieldDefinitionNullable.Value;
         string fieldText = fieldDefinition.Text ?? "Unnamed Field";
 
         string actionText;
@@ -246,6 +246,133 @@ public static partial class Module
         // Add system message after successful mark/unmark
         string systemMessageText = $"{playerName} {actionText} '{fieldText}'.";
         SendSystemMessage(ctx, systemMessageText);
+        CheckBingo(ctx);
+    }
+
+    private static void CheckBingo(ReducerContext ctx)
+    {
+        const int GRID_SIZE = 5; // A standard bingo card is 5x5
+
+        // Check all players' cards for bingo
+        foreach (var playerCard in ctx.Db.PlayerBingoCards.Iter())
+        {
+            var markedFields = ctx.Db.BingoFieldDefinitions.Iter()
+                .Where(def => playerCard.AssignedFieldIds.Contains(def.FieldId) && def.IsMarked)
+                .Select(def => def.FieldId)
+                .ToList();
+
+            bool hasBingo = false;
+            string winType = "";
+
+            if (markedFields.Count >= GRID_SIZE)
+            {
+                // First, map the field IDs to a 5x5 grid based on their position in AssignedFieldIds
+                // AssignedFieldIds is assumed to be ordered in row-major form (first 5 are first row, etc.)
+                var grid = new bool[GRID_SIZE, GRID_SIZE];
+                for (int i = 0; i < playerCard.AssignedFieldIds.Count; i++)
+                {
+                    int row = i / GRID_SIZE;
+                    int col = i % GRID_SIZE;
+                    grid[row, col] = markedFields.Contains(playerCard.AssignedFieldIds[i]);
+                }
+
+                // Check for full card (all fields marked)
+                if (!hasBingo && markedFields.Count == playerCard.AssignedFieldIds.Count)
+                {
+                    hasBingo = true;
+                    winType = "full card";
+                }
+
+                // Check for horizontal bingo (rows)
+                for (int row = 0; row < GRID_SIZE; row++)
+                {
+                    bool rowComplete = true;
+                    for (int col = 0; col < GRID_SIZE; col++)
+                    {
+                        if (!grid[row, col])
+                        {
+                            rowComplete = false;
+                            break;
+                        }
+                    }
+                    if (rowComplete)
+                    {
+                        hasBingo = true;
+                        winType = "horizontal row";
+                        break;
+                    }
+                }
+
+                // Check for vertical bingo (columns)
+                if (!hasBingo)
+                {
+                    for (int col = 0; col < GRID_SIZE; col++)
+                    {
+                        bool colComplete = true;
+                        for (int row = 0; row < GRID_SIZE; row++)
+                        {
+                            if (!grid[row, col])
+                            {
+                                colComplete = false;
+                                break;
+                            }
+                        }
+                        if (colComplete)
+                        {
+                            hasBingo = true;
+                            winType = "vertical column";
+                            break;
+                        }
+                    }
+                }
+
+                // Check for main diagonal (top-left to bottom-right)
+                if (!hasBingo)
+                {
+                    bool diagComplete = true;
+                    for (int i = 0; i < GRID_SIZE; i++)
+                    {
+                        if (!grid[i, i])
+                        {
+                            diagComplete = false;
+                            break;
+                        }
+                    }
+                    if (diagComplete)
+                    {
+                        hasBingo = true;
+                        winType = "diagonal";
+                    }
+                }
+
+                // Check for other diagonal (top-right to bottom-left)
+                if (!hasBingo)
+                {
+                    bool diagComplete = true;
+                    for (int i = 0; i < GRID_SIZE; i++)
+                    {
+                        if (!grid[i, GRID_SIZE - 1 - i])
+                        {
+                            diagComplete = false;
+                            break;
+                        }
+                    }
+                    if (diagComplete)
+                    {
+                        hasBingo = true;
+                        winType = "diagonal";
+                    }
+                }
+            }
+
+            if (hasBingo)
+            {
+                string playerName = ctx.Db.user.SteamId.Find(playerCard.PlayerSteamId)?.Name ?? $"Player ({playerCard.PlayerSteamId.Substring(0, 6)})";
+                string systemMessageText = $"Bingo! {playerName} has a {winType} bingo!";
+                SendSystemMessage(ctx, systemMessageText, true);
+                Log.Info($"Bingo! Player {playerCard.PlayerSteamId} has a {winType} bingo!");
+            }
+        }
     }
 
     [Reducer]
@@ -259,7 +386,6 @@ public static partial class Module
         // }
         
         int count = 0;
-        // Corrected: Use PascalCase table name as defined in [Table(Name = "BingoFieldDefinitions")]
         // Need to collect IDs first if modifying and iterating the same source via .Iter() causes issues,
         // or if Update requires the PK. For now, assume simple iteration and update by PK is fine.
         var fieldDefsToUpdate = new List<BingoFieldDefinition>();
@@ -268,8 +394,8 @@ public static partial class Module
         {
             if (fieldDefInIterator.IsMarked)
             {
-                var modifiedFieldDef = fieldDefInIterator; // Create a mutable copy
-                modifiedFieldDef.IsMarked = false;       // Modify the copy
+                var modifiedFieldDef = fieldDefInIterator;
+                modifiedFieldDef.IsMarked = false;
                 fieldDefsToUpdate.Add(modifiedFieldDef);
             }
         }

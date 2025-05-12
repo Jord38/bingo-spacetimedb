@@ -33,6 +33,7 @@ import {
 
 export type SendSystemMessage = {
   messageText: string,
+  important: boolean,
 };
 
 /**
@@ -46,6 +47,7 @@ export namespace SendSystemMessage {
   export function getTypeScriptAlgebraicType(): AlgebraicType {
     return AlgebraicType.createProductType([
       new ProductTypeElement("messageText", AlgebraicType.createStringType()),
+      new ProductTypeElement("important", AlgebraicType.createBoolType()),
     ]);
   }
 
