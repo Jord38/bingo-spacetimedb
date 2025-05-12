@@ -5,12 +5,10 @@ import { useSpacetimeDB } from "@/contexts/SpacetimeDBContext";
 import {
     Message,
     User,
-    SystemMessage as SystemMessageFromDB,
     DbConnection,
     type EventContext,
     SystemMessage
 } from "@/module_bindings";
-import { type Timestamp } from '@clockworklabs/spacetimedb-sdk';
 import { Button } from "@/components/ui/button";
 
 export type PrettyMessage = {
@@ -72,8 +70,8 @@ function useUserMessages(conn: DbConnection | null, connected: boolean, authenti
     return messages;
 }
 
-function useSystemMessages(conn: DbConnection | null, connected: boolean, authenticatedWithBackend: boolean): SystemMessageItem[] {
-    const [systemMessages, setSystemMessages] = useState<SystemMessageItem[]>([]);
+function useSystemMessages(conn: DbConnection | null, connected: boolean, authenticatedWithBackend: boolean): SystemMessage[] {
+    const [systemMessages, setSystemMessages] = useState<SystemMessage[]>([]);
 
     useEffect(() => {
         if (!conn || !connected || !authenticatedWithBackend) {
@@ -81,36 +79,25 @@ function useSystemMessages(conn: DbConnection | null, connected: boolean, authen
             return;
         }
 
-
         const onInsert = (_ctx: EventContext, sysMsg: SystemMessage) => {
-            setSystemMessages(prev => [...prev, {
-                type: 'system_db',
-                id: sysMsg.messageId.toString(),
-                text: sysMsg.text,
-                timestamp: sysMsg.sent.toDate(),
-            } as SystemMessageItem].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()));
+            setSystemMessages(prev => [...prev, sysMsg].sort((a, b) => Number(a.sent) - Number(b.sent)));
         };
         conn.db.systemMessage.onInsert(onInsert);
 
         const onDelete = (_ctx: EventContext, systemMessage: SystemMessage) => {
             setSystemMessages(prev =>
                 prev.filter(
-                    m => !(m.timestamp === systemMessage.timestamp && m.text === systemMessage.text)
-                ).sort((a, b) => Number(a.timestamp) - Number(b.timestamp))
+                    m => !(m.sent === systemMessage.sent && m.text === systemMessage.text)
+                ).sort((a, b) => Number(a.sent) - Number(b.sent))
             );
         };
         conn.db.systemMessage.onDelete(onDelete);
 
-        const initialSystemMessages: SystemMessageItem[] = [];
-        for (const sysMsg of conn.db.systemMessage.iter()) {
-            initialSystemMessages.push({
-                type: 'system_db',
-                id: sysMsg.messageId.toString(),
-                text: sysMsg.text,
-                timestamp: sysMsg.sent.toDate(),
-            } as SystemMessageItem);
+        const initialMessages: SystemMessage[] = [];
+        for (const msg of conn.db.message.iter()) {
+            initialMessages.push(msg as SystemMessage);
         }
-        setSystemMessages(initialSystemMessages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()));
+        setSystemMessages(initialMessages.sort((a, b) => Number(a.sent) - Number(b.sent)));
 
         return () => {
             if (conn) {
@@ -123,7 +110,7 @@ function useSystemMessages(conn: DbConnection | null, connected: boolean, authen
     return systemMessages;
 }
 
-function useSystemMessagesFromDB(conn: DbConnection | null, connected: boolean, authenticatedWithBackend: boolean): DBSystemMessageItem[] {
+/*function useSystemMessagesFromDB(conn: DbConnection | null, connected: boolean, authenticatedWithBackend: boolean): DBSystemMessageItem[] {
     const [dbSystemMessages, setDbSystemMessages] = useState<DBSystemMessageItem[]>([]);
 
     useEffect(() => {
@@ -161,7 +148,7 @@ function useSystemMessagesFromDB(conn: DbConnection | null, connected: boolean, 
     }, [conn, connected, authenticatedWithBackend]);
 
     return dbSystemMessages;
-}
+}*/
 
 function useUsers(conn: DbConnection | null, connected: boolean, authenticatedWithBackend: boolean): Map<string, User> {
     const [users, setUsers] = useState<Map<string, User>>(new Map());
@@ -259,22 +246,34 @@ export function Chat() {
             });
     }, [userChatMessages, allUsers, currentUserSteamId]);
 
+    const prettySystemMessages: SystemMessageItem[] = useMemo(() => {
+        return systemMessages
+            .map((message, index) => {
+                return {
+                    type: 'system_db',
+                    id: `${message.sent.toString()}-${index}`,
+                    text: message.text,
+                    timestamp: message.sent.toDate()
+                };
+            });
+    }, [systemMessages, allUsers, currentUserSteamId]);
+
     useEffect(() => {
         if (!conn || !connected || !authenticatedWithBackend || !conn.db.user) return;
 
         const handleUserOnlineChange = (user: User, onlineStatus: "connected" | "disconnected") => {
-            const name = user.name || user.steamId?.substring(0, 8) || "A user";
-            conn.reducers.sendSystemMessage(`${name} has ${onlineStatus}.`);
+            /*const name = user.name || user.steamId?.substring(0, 8) || "A user";
+            conn.reducers.sendSystemMessage(`${name} has ${onlineStatus}.`);*/
         };
 
         const onUserInsert = (_ctx: EventContext, user: User) => {
-            if (user.online && user.steamId !== currentUserSteamId) {
+            /*if (user.online && user.steamId !== currentUserSteamId) {
                  handleUserOnlineChange(user, "connected");
-            }
+            }*/
         };
 
         const onUserUpdate = (_ctx: EventContext, oldUser: User, newUser: User) => {
-            if (oldUser.online !== newUser.online) {
+            /*if (oldUser.online !== newUser.online) {
                  handleUserOnlineChange(newUser, newUser.online ? "connected" : "disconnected");
             }
             if (oldUser.name !== newUser.name) {
@@ -285,7 +284,7 @@ export function Chat() {
                 } else if (!oldUser.name && newUser.name) {
                     conn.reducers.sendSystemMessage(`${newDisplayName} (Steam Name) set as name.`);
                 }
-            }
+            }*/
         };
 
         conn.db.user.onInsert(onUserInsert);
@@ -302,10 +301,10 @@ export function Chat() {
     const displayedChatItems: ChatItem[] = useMemo(() => {
         const combined: ChatItem[] = [
             ...prettyUserMessages,
-            ...systemMessages
+            ...prettySystemMessages
         ];
         return combined.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-    }, [prettyUserMessages]);
+    }, [prettyUserMessages, prettySystemMessages]);
 
     useEffect(() => {
         if (messageListRef.current) {
@@ -329,7 +328,6 @@ export function Chat() {
             conn.reducers.setName(newName);
         } catch (err: any) {
             console.error("Error calling setName reducer:", err);
-            conn.reducers.sendSystemMessage(`Error setting name: ${err.message}`);
         }
     };
 
@@ -416,7 +414,7 @@ export function Chat() {
                                         </p>
                                     </div>
                                 );
-                            } else if (item.type === 'system_client' || item.type === 'system_db') {
+                            } else if (item.type === 'system_db') {
                                 return (
                                     <div key={item.id} className="text-center my-1 py-1">
                                         <p className="text-xs text-muted-foreground italic px-2 py-0.5 bg-background border border-border rounded-md inline-block">

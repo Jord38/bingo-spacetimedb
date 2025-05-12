@@ -109,6 +109,7 @@ public static partial class Module
             });
         }
         Log.Info($"Client {ctx.Sender} authenticated and linked to SteamID: {steamId}" + (user.Name != null ? $", Name: {user.Name}" : ""));
+        SendSystemMessage(ctx, $"{user.Name ?? user.SteamId} has connected.");
     }
 
 
@@ -126,9 +127,11 @@ public static partial class Module
         var user = ctx.Db.user.SteamId.Find(connection.SteamId);
         if (user != null)
         {
+            string oldName = user.Name;
             user.Name = name;
             ctx.Db.user.SteamId.Update(user); // Update based on PK SteamId
             Log.Info($"User {user.SteamId} name updated to: {name}");
+            SendSystemMessage(ctx, $"{oldName} changed their name to {name}");
         }
         else
         {
@@ -158,6 +161,7 @@ public static partial class Module
                 user.Online = false;
                 ctx.Db.user.SteamId.Update(user);
                 Log.Info($"User {user.SteamId} marked as offline.");
+                SendSystemMessage(ctx, $"{user.Name ?? user.SteamId} has disconnected.");
             }
             else
             {
